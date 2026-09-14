@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import ExpiredSignatureError, JWTError, jwt
 from passlib.context import CryptContext
 
 from app.config import settings
@@ -49,17 +49,19 @@ def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
     try:
+        # 默认校验签名与 exp（过期会抛 ExpiredSignatureError），切勿关闭 verify_exp
         payload = jwt.decode(
             credentials.credentials,
             settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
-            options={"verify_exp": False},
         )
         username = payload.get("sub")
         role = payload.get("role")
         if not username or username not in USERS:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效令牌")
         return {"username": username, "role": role}
+    except ExpiredSignatureError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="令牌已过期") from exc
     except JWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效令牌") from exc
 
